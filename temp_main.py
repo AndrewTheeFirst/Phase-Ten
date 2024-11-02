@@ -1,4 +1,4 @@
-from PhaseTen import *
+from temp import *
 from os import system
 
 #Deals cards to players and puts them in a list
