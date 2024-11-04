@@ -1,34 +1,12 @@
 # Andrew Patton
 # Phase Ten
-# Started Refactoring 2024-11-1
-# Further Refactoring 2024-11-2
+# 2024-11-1 Began refactoring - Created new class structure
+# 2024-11-2 Further refactoring - Expanded on stack subclass methods as well as stack class)
+# 2024-11-3 Worked on Phase class methods and Hand sorting
+# 2024-11-4
 
-from constants import Faces, Colors, CARD_RENDERS, PRINT_COLOR, CARD_TOP_BOT, CLEAR
+from card import Faces, Colors, Card
 from random import shuffle as _shuffle
-
-class Card:
-    '''Represents phaseten phasecards'''
-    def __init__(self, face: Faces, color: Colors):
-        self.face = face
-        self.color = color
-        self._repr = color.name.lower()[0] + str(face.value) if face not in [Faces.WILD, Faces.SKIP] else face.name.lower()[0]
-        
-    def __str__(self):
-        card = ""
-        card += PRINT_COLOR[self.color] + CARD_TOP_BOT + CLEAR + '\n'
-        card_render = CARD_RENDERS[self.face].split('\n')
-        for card_line in card_render:
-            card += PRINT_COLOR[self.color] + card_line[0] + CLEAR +\
-                    card_line[1:-1] +\
-                    PRINT_COLOR[self.color] + card_line[-1] + CLEAR + '\n'
-        card += PRINT_COLOR[self.color] + CARD_TOP_BOT + CLEAR + '\n'
-        return card
-
-    def __repr__(self):
-        return f"Card({self.face}, {self.color})"
-
-    def value(self) -> int:
-        return self.face.value
 
 class Stack:
     '''Represents a generic stack of cards (superclass)'''
@@ -137,6 +115,7 @@ class Hand(Stack):
         self.cards = sorted(self.cards, key = lambda card: card.color.value) # may modify
 
 class Phase(Hand):
+    '''Represents a maintained stack according to phase conditions'''
     def __init__(self):
         super().__init__()
         self.num_cards = 0
@@ -183,10 +162,10 @@ class Phase(Hand):
         return num_wilds >= 0 and not self.has_skip
     
 class Player:
-    # Player Has a Phase and a Hand
+    '''Player Has a Phase and a Hand'''
     def __init__(self):
         self.hand = Hand()
-        self.phase = Phase()
+        self.phase = 1
         self.out = False
         self.points = 0
 

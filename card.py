@@ -58,3 +58,27 @@ PRINT_COLOR = {Colors.NONE: "",
                Colors.YELLOW: YELLOW,
                Colors.BLUE: BLUE,
                Colors.ANY: "",}
+
+class Card:
+    '''Represents phaseten phasecards'''
+    def __init__(self, face: Faces, color: Colors):
+        self.face = face
+        self.color = color
+        self._repr = color.name.lower()[0] + str(face.value) if face not in [Faces.WILD, Faces.SKIP] else face.name.lower()[0]
+        
+    def __str__(self):
+        card = ""
+        card += PRINT_COLOR[self.color] + CARD_TOP_BOT + CLEAR + '\n'
+        card_render = CARD_RENDERS[self.face].split('\n')
+        for card_line in card_render:
+            card += PRINT_COLOR[self.color] + card_line[0] + CLEAR +\
+                    card_line[1:-1] +\
+                    PRINT_COLOR[self.color] + card_line[-1] + CLEAR + '\n'
+        card += PRINT_COLOR[self.color] + CARD_TOP_BOT + CLEAR + '\n'
+        return card
+
+    def __repr__(self):
+        return f"Card({self.face}, {self.color})"
+
+    def value(self) -> int:
+        return self.face.value

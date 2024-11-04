@@ -1,4 +1,4 @@
-from PhaseTen import Player, Pickup, Phase
+from phaseten import Player, Pickup, Phase
 from itertools import cycle
 from os import system, name as os_name
 

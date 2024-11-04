@@ -1,13 +1,18 @@
 // {type:class}
 // {direction:topDown}
 
-[Stack]^[Hand]
+[Stack]0*-<>[Card]
+
 [Stack]^[Discard]
 [Stack]^[Pickup]
-[Stack]-<>[Card]
+[Stack]^[Hand]
+[Hand]^[Phase]
+
+[Game]1*-<>[Player]
+[Game]1*-<>[Phase]
+
 [Game]-<>[Discard]
-[Game]-<>[Player]
 [Game]-<>[Pickup]
+
 [Pickup]-<>[Discard]
 [Player]-<>[Hand]
-[Player]-<>[Phase]
