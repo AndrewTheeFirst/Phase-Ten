@@ -81,4 +81,5 @@ class Card:
         return f"Card({self.face}, {self.color})"
 
     def value(self) -> int:
+        '''returns the point value of a card'''
         return self.face.value
