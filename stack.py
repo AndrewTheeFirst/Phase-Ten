@@ -1,7 +1,8 @@
 from card import Faces, Colors, Card
-from random import shuffle as _shuffle
+from random import shuffle as _shuffle, seed
 from controls import timed_message
 
+# seed(8)
 BLANK = Card(Faces.BLANK, Colors.NONE)
 BACK = Card(Faces.BACK, Colors.NONE)
 
@@ -11,18 +12,23 @@ class Stack:
         self.cards: list[Card] = []
 
     def push(self, card: Card):
+        '''Adds the card to the top of the stack'''
         self.cards.append(card)
     
     def pop(self, index = -1) -> Card:
+        '''Returns the top card in the stack whilst also removing it from the stack'''
         return self.cards.pop(index)
     
     def top(self) -> Card:
+        '''Returns the top card in the stack'''
         return self.cards[-1]
 
     def is_empty(self):
+        '''Returns True if the stack is empty. Returns False otherwise'''
         return self.cards == []
     
     def size(self):
+        '''Returns the number of cards in the stack'''
         return len(self.cards)
 
     def __str__(self):
@@ -51,7 +57,6 @@ class Pickup(Stack):
     def __init__(self):
         super().__init__()
         self.discard = Discard()
-        self.shuffle()
 
     def shuffle(self):
         '''creates new shuffled deck of cards'''
@@ -97,12 +102,14 @@ class Hand(Stack):
         return hand_builder
     
     def find(self, card_repr):
+        '''Returns the index of the card in a stack via a card's card_repr. Returns -1 if not found'''
         for index in range(self.size()):
             if card_repr == self.cards[index]._repr:
                 return index
         return -1
 
     def drop(self):
+        '''Prompts player to 'safely' drop a card'''
         while True:
             card_repr = input("Which card would you like to drop?: ")
             index = self.find(card_repr)
@@ -111,9 +118,11 @@ class Hand(Stack):
             print("Card not found. (ex. g3 is Green 4; w is Wild)")
 
     def face_sort(self):
+        '''Sorts cards by face'''
         self.cards = sorted(self.cards, key = lambda card: card.value()) # may modify
 
     def color_sort(self):
+        '''Sorts cards by color'''
         self.cards = sorted(self.cards, key = lambda card: card.color.value) # may modify
 
 class Phase(Hand):
@@ -137,15 +146,27 @@ class Phase(Hand):
         return self.is_run(size)
 
     def push(self, card: Card):
+        '''Pushes a card onto stack while keeping track of phase state'''
         super().push(card)
         if card.face == Faces.WILD:
             self.num_wilds += 1
         elif card.face == Faces.SKIP:
             self.has_skip = True
         self.num_cards += 1
-    
+
+    def put(self, cards: list[Card]):
+        '''Pushes a list of cards via .push()'''
+        for card in cards:
+            self.push(card)
+
+    def copy(self):
+        '''Returns a copy of Phase object (maintained state)'''
+        temp_phase = Phase(self.phase_str)
+        temp_phase.put(self.cards)
+        return temp_phase
+
     def is_set(self, size: int, set_type: str):
-        '''Returns true if cards creates a set of specified size and set_type (ie. "face" or "color")'''
+        '''Returns true if cards creates a set of specified size and set_type (ie. "face" or "color") otherwise returns False'''
         self.face_sort()
         if self.num_cards < size:
             return False
@@ -162,6 +183,7 @@ class Phase(Hand):
         return False
     
     def is_run(self, size: int):
+        '''Returns true if cards creates a run of specified size otherwise returns False'''
         self.face_sort()
         num_wilds = self.num_wilds
         if self.num_cards < size:
@@ -177,7 +199,15 @@ class Phase(Hand):
             last_value, expected_value = curr_value, curr_value + 1
         return num_wilds >= 0 and not self.has_skip
 
+    def reset(self):
+        '''Resets all fields of the Phase instance'''
+        self.num_cards = 0
+        self.num_wilds = 0
+        self.has_skip = False
+        self.cards = []
+
     def desc(self):
+        '''Returns a human readable description of the Phase contraints'''
         return f"A {self.phase_str[:3].title()} of {self.phase_str[3]} {'Colors' if len(self.phase_str) == 5 else ''}"
 
 if __name__ == "__main__":
