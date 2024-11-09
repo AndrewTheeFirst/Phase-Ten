@@ -1,18 +1,22 @@
 // {type:class}
 // {direction:topDown}
 
-[Stack]0*-<>[Card]
-
-[Stack]^[Discard]
+// Inheritance
 [Stack]^[Pickup]
+[Stack]^[Discard]
 [Stack]^[Hand]
-[Hand]^[Phase]
+[Stack]^[Phase]
 
-[Game]1*-<>[Player]
-[Game]1*-<>[Phase]
+// Compositions
+[Phase]-*>[Stack]
 
+[Game]-*>[Player]
+[Game]-*>[Pickup]
+
+[Player]-*>[Hand]
+[Player]-*>[Phase]
+[Pickup]-*>[Discard]
+
+// Aggregations
 [Game]-<>[Discard]
-[Game]-<>[Pickup]
-
-[Pickup]-<>[Discard]
-[Player]-<>[Hand]
+[Game]-<>[Phase]

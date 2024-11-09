@@ -1,8 +1,7 @@
 from card import Faces, Colors, Card
-from random import shuffle as _shuffle, seed
+from random import shuffle as _shuffle
 from controls import timed_message
 
-# seed(8)
 BLANK = Card(Faces.BLANK, Colors.NONE)
 BACK = Card(Faces.BACK, Colors.NONE)
 
@@ -59,7 +58,7 @@ class Pickup(Stack):
         self.discard = Discard()
 
     def shuffle(self):
-        '''creates new shuffled deck of cards'''
+        '''creates new shuffled deck of cards: 4 skips, 8 wilds, 2 sets of numbers 1-12 for each color'''
         self.cards = [Card(face, color) for face in Faces for color in Colors \
                       if face.value in range(1, 13) and color.value in range(1,5) for _ in range(2)]
         for _ in range(2):
@@ -91,17 +90,15 @@ class Hand(Stack):
     '''Represents a player-owned stack of cards'''
     def __str__(self):
         hand_builder = ""
-        num_cards = self.size()
-        if num_cards != 0:
-            card_lines = [str(self.cards[index]).split('\n') for index in range(num_cards)]
-            card_height = len(card_lines[0])
-            for line in range(card_height):
-                for card_index in range(num_cards):
-                    hand_builder += card_lines[card_index][line] + "  "
+        if self.size() != 0:
+            card_lines = [str(card).split('\n') for card in self.cards]
+            for line in range(len(card_lines[0])): 
+                for card_line in card_lines:
+                    hand_builder += card_line[line] + " " # matches the same line for all cards
                 hand_builder += '\n'
-        return hand_builder
+        return hand_builder.rstrip() + '\n'
     
-    def find(self, card_repr):
+    def find(self, card_repr: str):
         '''Returns the index of the card in a stack via a card's card_repr. Returns -1 if not found'''
         for index in range(self.size()):
             if card_repr == self.cards[index]._repr:
@@ -109,7 +106,8 @@ class Hand(Stack):
         return -1
 
     def drop(self):
-        '''Prompts player to 'safely' drop a card'''
+        '''Prompts player to 'safely' drop a card
+        '''
         while True:
             card_repr = input("Which card would you like to drop?: ")
             index = self.find(card_repr)
@@ -119,104 +117,163 @@ class Hand(Stack):
 
     def face_sort(self):
         '''Sorts cards by face'''
-        self.cards = sorted(self.cards, key = lambda card: card.value()) # may modify
+        self.cards.sort(key = lambda card: card.val) # may modify
 
     def color_sort(self):
         '''Sorts cards by color'''
         self.cards = sorted(self.cards, key = lambda card: card.color.value) # may modify
 
-class Phase(Hand):
-    '''Represents a maintained stack according to phase conditions.
+class Phase(Stack):
+    '''Represents a maintained stack according to phase conditions.'''
 
-    ex phase_str: "set4", "run4", "set4c" '''
     def __init__(self, phase_str: str):
+        '''ex phase_str: "set4", "run4", "set4c"'''
         super().__init__()
+        self.unchecked = Stack()
         self.phase_str = phase_str
-        self.num_cards = 0
-        self.num_wilds = 0
-        self.has_skip = False
+        self.num_skips = 0
+    
+    def push(self, card: Card):
+        '''Pushes unverified card into the unchecked pile'''
+        if card.val == 15:
+            self.num_skips += 1
+        self.unchecked.push(card)
+
+    def pop(self):
+        top_card = self.unchecked.pop()
+        if top_card.val == 15:
+            self.num_skips -= 1
+        return top_card
     
     def is_phase(self):
+        '''Returns True if cards are of phase_str specified. Returns False otherwise.
+        (if returns True .unchecked can be considered verified)
+        
+        >>> p1 = Phase("set3c")
+        >>> p1.push(Card(Faces.ONE, Colors.RED))
+        >>> p1.push(Card(Faces.WILD, Colors.ANY))
+        >>> p1.push(Card(Faces.TWO, Colors.RED))
+        >>> p1.is_phase()
+        True
+
+        >>> p1 = Phase("run3")
+        >>> p1.push(Card(Faces.ONE, Colors.YELLOW))
+        >>> p1.push(Card(Faces.FOUR, Colors.RED))
+        >>> p1.push(Card(Faces.WILD, Colors.ANY))
+        >>> p1.is_phase()
+        False
+        '''
         size = int(self.phase_str[3]) 
         if "set" in self.phase_str:
             if self.phase_str[-1] != 'c':
-                return self.is_set(size, "face")
+                verified = self.is_set(size, "face")
             else:
-                return self.is_set(size, "color")
-        return self.is_run(size)
+                verified = self.is_set(size, "color")
+        else:
+            verified = self.is_run(size)
+        return verified
+    
+    def merge(self):
+        '''Merges .unchecked cards (checked through is_phase()) into the the stack of verified phase cards
 
-    def push(self, card: Card):
-        '''Pushes a card onto stack while keeping track of phase state'''
-        super().push(card)
-        if card.face == Faces.WILD:
-            self.num_wilds += 1
-        elif card.face == Faces.SKIP:
-            self.has_skip = True
-        self.num_cards += 1
+        >>> p1 = Phase("set3")
+        >>> p1.push(Card(Faces.TWO, Colors.RED))
+        >>> p1.push(Card(Faces.WILD, Colors.ANY))
+        >>> p1.push(Card(Faces.TWO, Colors.BLUE))
+        >>> if p1.is_phase():
+        ...    p1.merge()
+        >>> p1.cards
+        [Card(Faces.TWO, Colors.BLUE), Card(Faces.TWO, Colors.RED), Card(Faces.WILD, Colors.ANY)]
+        >>> p1.unchecked.cards
+        []
 
-    def put(self, cards: list[Card]):
-        '''Pushes a list of cards via .push()'''
-        for card in cards:
-            self.push(card)
-
-    def copy(self):
-        '''Returns a copy of Phase object (maintained state)'''
-        temp_phase = Phase(self.phase_str)
-        temp_phase.put(self.cards)
-        return temp_phase
+        >>> p1.push(Card(Faces.ONE, Colors.YELLOW))
+        >>> if p1.is_phase():
+        ...     p1.merge()
+        >>> p1.cards
+        [Card(Faces.TWO, Colors.BLUE), Card(Faces.TWO, Colors.RED), Card(Faces.WILD, Colors.ANY)]
+        >>> p1.unchecked.cards
+        [Card(Faces.ONE, Colors.YELLOW)]
+        '''
+        for _ in range(self.unchecked.size()):
+            super().push(self.unchecked.pop())
+        self.cards.sort(key = lambda card: card.val)
 
     def is_set(self, size: int, set_type: str):
-        '''Returns true if cards creates a set of specified size and set_type (ie. "face" or "color") otherwise returns False'''
-        self.face_sort()
-        if self.num_cards < size:
+        '''Returns true if cards creates a set of specified size and set_type (ie. "face" or "color") otherwise returns False
+        >>> p1 = Phase("")
+        >>> p1.push(Card(Faces.ONE, Colors.YELLOW))
+        >>> p1.push(Card(Faces.WILD, Colors.RED))
+        >>> p1.push(Card(Faces.ONE, Colors.BLUE))
+        >>> p1.is_set(3, "face")
+        True
+        >>> p1 = Phase("")
+        >>> p1.push(Card(Faces.ONE, Colors.YELLOW))
+        >>> p1.push(Card(Faces.ONE, Colors.RED))
+        >>> p1.push(Card(Faces.ONE, Colors.BLUE))
+        >>> p1.is_set(3, "color")
+        False
+        '''
+        if self.size() + self.unchecked.size()  < size:
             return False
-        elif set_type == "face": # Goes through all cards except wilds 
-            return all([(self.cards[card1_index].face == self.cards[card2_index].face)\
-                            for card1_index in range(self.num_cards - 1 - self.num_wilds)\
-                            for card2_index in range(card1_index, self.num_cards - 1 - self.num_wilds)])\
-                            and not self.has_skip
-        elif set_type == "color":
-            return all([(self.cards[card1_index].color == self.cards[card2_index].color)
-                            for card1_index in range(self.num_cards - 1 - self.num_wilds)\
-                            for card2_index in range(card1_index, self.num_cards - 1 - self.num_wilds)])\
-                            and not self.has_skip
-        return False
+        if set_type == "face":
+            return len({card.val for card in self.cards + self.unchecked.cards if card.val != 25}) == 1\
+            and self.num_skips == 0
+        else:
+            return len({card.color_val for card in self.cards + self.unchecked.cards if card.val != 25}) == 1\
+            and self.num_skips == 0
     
     def is_run(self, size: int):
-        '''Returns true if cards creates a run of specified size otherwise returns False'''
-        self.face_sort()
-        num_wilds = self.num_wilds
-        if self.num_cards < size:
+        '''Returns true if cards creates a run of specified size otherwise returns False
+        >>> p1 = Phase("")
+        >>> p1.push(Card(Faces.THREE, Colors.YELLOW))
+        >>> p1.push(Card(Faces.FOUR, Colors.RED))
+        >>> p1.push(Card(Faces.WILD, Colors.BLUE))
+        >>> p1.is_run(3)
+        True
+        >>> p1 = Phase("")
+        >>> p1.push(Card(Faces.ONE, Colors.YELLOW))
+        >>> p1.push(Card(Faces.FOUR, Colors.RED))
+        >>> p1.push(Card(Faces.WILD, Colors.BLUE))
+        >>> p1.is_run(3)
+        False
+        '''
+        if self.size() + self.unchecked.size() < size:
             return False
-        card_values = [card.value() for card in self.cards]
-        last_value, expected_value = card_values[0], card_values[0] + 1
-        for card_index in range(1, self.num_cards - num_wilds): # Goes through all cards except wilds
-            curr_value = card_values[card_index]
-            if last_value == curr_value: # cannot have duplicates
+        card_vals = [card.val for card in self.cards + self.unchecked.cards]
+        card_vals.sort()
+        num_wilds = card_vals.count(25)
+        expected_val = card_vals[0] + 1
+        for val_index in range(1, len(card_vals) - num_wilds): # looping over only the cards between the first value and the wilds
+            curr_val = card_vals[val_index]
+            if curr_val == card_vals[val_index - 1]: # cannot have duplicates
                 return False
-            elif expected_value != curr_value:
-                num_wilds -= curr_value - expected_value # calculates the number of cards missing from inbetween
-            last_value, expected_value = curr_value, curr_value + 1
-        return num_wilds >= 0 and not self.has_skip
-
-    def reset(self):
-        '''Resets all fields of the Phase instance'''
-        self.num_cards = 0
-        self.num_wilds = 0
-        self.has_skip = False
-        self.cards = []
+            else:
+                num_wilds -= curr_val - expected_val # difference of exp and curr is the required num of wilds
+                expected_val = curr_val + 1
+        return num_wilds >= 0 and self.num_skips == 0
 
     def desc(self):
-        '''Returns a human readable description of the Phase contraints'''
-        return f"A {self.phase_str[:3].title()} of {self.phase_str[3]} {'Colors' if len(self.phase_str) == 5 else ''}"
+        '''Returns a human readable description of the Phase contraints
+        >>> p1 = Phase("set3")
+        >>> p1.desc()
+        'A Set of 3'
+        >>> p1 = Phase("set3c")
+        >>> p1.desc()
+        'A Set of 3 Colors'
+        '''
+        return f"A {self.phase_str[:3].title()} of {self.phase_str[3]} {'Colors' if len(self.phase_str) == 5 else ''}".rstrip()
+
+    def __str__(self):
+        hand_builder = ""
+        if self.size() + self.unchecked.size() != 0:
+            card_lines = [str(card).split('\n') for card in self.cards + self.unchecked.cards]
+            for line in range(len(card_lines[0])): 
+                for card_line in card_lines:
+                    hand_builder += card_line[line] + " " # matches the same line for all cards
+                hand_builder = hand_builder.rstrip() + '\n'
+        return hand_builder.rstrip() + '\n'
 
 if __name__ == "__main__":
-    p1 = Phase("run5")
-    p1.push(Card(Faces.ONE, Colors.YELLOW))
-    p1.push(Card(Faces.WILD, Colors.ANY))
-    p1.push(Card(Faces.WILD, Colors.ANY))
-    p1.push(Card(Faces.FIVE, Colors.GREEN))
-    p1.push(Card(Faces.WILD, Colors.ANY))
-    p1.push(Card(Faces.SIX, Colors.YELLOW))
-    print(p1.is_phase())
-    print(p1)
+    from doctest import testmod
+    testmod()

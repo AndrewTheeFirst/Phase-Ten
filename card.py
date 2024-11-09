@@ -1,6 +1,6 @@
 from enum import Enum
 
-class Faces(Enum):
+class Faces(Enum): # values are used for sorting and scoring at the end of a round
     BACK = -1
     BLANK = 0
     ONE = 1
@@ -37,14 +37,15 @@ CARD_RENDERS = {Faces.ONE: "|    +    |\n|    |    |\n|    |    |\n|    |    |\n
                Faces.NINE: "|  +---+  |\n|  |   |  |\n|  +---+  |\n|      |  |\n|      +  |",
                Faces.TEN: "| + +---+ |\n| | |   | |\n| | |   | |\n| | |   | |\n| + +---+ |",
                Faces.ELEVEN: "|  +   +  |\n|  |   |  |\n|  |   |  |\n|  |   |  |\n|  +   +  |",
-               Faces.TWELVE: "| + ----+ |\n| |     | |\n| | ----+ |\n| | |     |\n| + +---- |",
+               Faces.TWELVE: "| + ----+ |\n| |     | |\n| | +---+ |\n| | |     |\n| + +---- |",
                Faces.SKIP: "|         |\n|         |\n| S K I P |\n|         |\n|         |",
                Faces.WILD: "|         |\n|         |\n| W I L D |\n|         |\n|         |",
                Faces.BACK: "|  P      |\n|   H     |\n|    A    |\n|     S   |\n|      E  |",
                Faces.BLANK: "|         |\n|         |\n|         |\n|         |\n|         |"}
 
-CARD_TOP_BOT = "+---------+"
+CARD_TOP_BOT = "+---------+" # all cards have the same top / bot
 
+# ANSI escape codes for color - Inspired by Prof. O
 ANSI = "\x1b[{}m"
 RED = ANSI.format(31)
 GREEN = ANSI.format(32)
@@ -64,6 +65,8 @@ class Card:
     def __init__(self, face: Faces, color: Colors):
         self.face = face
         self.color = color
+        self.val = self.face.value
+        self.color_val = self.color.value
         self._repr = color.name.lower()[0] + str(face.value) if face not in [Faces.WILD, Faces.SKIP] else face.name.lower()[0]
         
     def __str__(self):
@@ -80,6 +83,9 @@ class Card:
     def __repr__(self):
         return f"Card({self.face}, {self.color})"
 
-    def value(self) -> int:
-        '''returns the point value of a card'''
-        return self.face.value
+if __name__ == "__main__":
+    cds = [Card(Faces.TWELVE, Colors.YELLOW),
+            Card(Faces.THREE, Colors.BLUE),
+              Card(Faces.WILD, Colors.ANY)]
+    for cd in cds:
+        print(cd)
