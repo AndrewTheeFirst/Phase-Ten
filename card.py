@@ -80,6 +80,17 @@ class Card:
         card += PRINT_COLOR[self.color] + CARD_TOP_BOT + CLEAR + '\n'
         return card
 
+    @staticmethod
+    def str_cards(cards: list["Card"]):
+        num_cards = len(cards)
+        if num_cards == 0:
+            return ""
+        cards_lines = [str(card).split('\n') for card in cards]
+        num_lines = len(cards_lines[0])
+        return '\n'.join([" ".join([cards_lines[card_num][line_num] 
+                                    for card_num in range(num_cards)]) 
+                                    for line_num in range(num_lines)])
+
     def __repr__(self):
         return f"Card({self.face}, {self.color})"
 
