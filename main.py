@@ -6,34 +6,12 @@
 # 2024-11-4 Implemented Phases and Phase completion, better printing, and skipping
 # 2024-11-5 Implemented Phase addition - Production
 # 2024-11-8 Phase class rework (Stack, verification, merge, etc.) misc. tweaks
-
-# after returning cards, screen doesnt refresh, show player hand, then ask to 'complete phase?'
-# only returning cards from failed phase, not all cards
-
+# 2024-12-21 Complete refactor - more consistent printing, improved eventloop
 
 from stack import Pickup, Phase, Hand
 from controls import intin, clear, timed_message
-from itertools import cycle
 
-def print_phase_group(phase_group: list[Phase]):
-    '''Prints a phase group'''
-    master_str = ""
-    phase_strings = [str(phase).split('\n') for phase in phase_group]
-    for line in range(len(phase_strings[0])):
-        for phase in phase_strings:
-            master_str += phase[line] + "    "
-        master_str = master_str.rstrip() + '\n'
-    print(master_str)
-
-def phase_objectives(phases: list[Phase]):
-    '''Returns a comma-space seperated string of phase descriptions'''
-    master_str = ""
-    for phase in phases:
-        master_str += phase.desc() + " + "
-    return master_str[:-3]
-
-PHASES = [["HI"],
-          ["set3", "set3"],
+PHASES = [["set3", "set3"],
           ["set3", "run4"],
           ["set4", "run4"],
           ["run7"],
@@ -46,86 +24,203 @@ PHASES = [["HI"],
 
 class Player:
     '''Player has a Hand and Phases'''
-    count = 1
+    count = 0
+
     def __init__(self):
-        self.hand = Hand()
-        self.phase_num = 0
-        self.phases: list[Phase] = []
-        self.next_phase()
+        self.phase = 0
+        self.cards = Hand()
         self.out = False
         self.points = 0
-        self.name = Player.count
+        self.turn_over = True
+        self.name = Player.count + 1
         Player.count += 1
 
-    def show_area(self, phase: Phase, condition: int = -1):
+    def show_space(self, phase: Phase):
+        space = phase.desc() + '\n' + str(phase) + '\n' + str(self.cards)
         clear()
-        print(phase.desc() if condition == -1 else f"Phase {self.phase_num} - Condition {condition + 1}: {phase.desc()}")
-        print(phase)
-        print(self.hand)
+        print(space)
 
-    def has_cards(self) -> bool:
+    def has_cards(self):
         '''Returns True if a player has any cards, returns False otherwise'''
-        return not self.hand.is_empty()
-    
-    def next_phase(self):
-        '''Increments a player's phase, and instantiates Phase based on player's phase'''
-        num_phases = len(PHASES) - 1
-        if self.phase_num != -1:
-            if self.phase_num == num_phases:
-                self.phase_num = -1 # marks player as done
-            else:
-                self.phase_num += 1
-                self.phases = [Phase(phase_str) for phase_str in PHASES[self.phase_num]]
-    
-    def complete_phase(self) -> bool:
-        '''Player attempts to complete phase. Returns True if player completed phase, otherwise returns False'''
-        while intin("Complete Phase? yes(1), no(2): ", (1, 2)) == 1:
-            for condition in range(len(self.phases)):
-                phase = self.phases[condition]
-                while True:
-                    self.show_area(phase, condition)
-                    choice = input("Which card would you like to drop? (type F to finish) ")
-                    if choice.upper() == "F":
-                        break
-                    card_index = self.hand.find(choice)
-                    if card_index == -1:
-                        timed_message("Card not found. (ex. g3 is Green 4; w is Wild)", 1)
-                    else:
-                        phase.push(self.hand.pop(card_index))
-            if all([phase.is_phase() for phase in self.phases]): # phases are complete
-                for phase in self.phases:
-                    phase.merge()
-                self.out = True
+        return self.cards.size() != 0
+
+    def consolidate(self):
+        self.cards.clear()
+        if self.out:
+            self.phase += 1
+            self.out = False
+        self.points += self.cards.sum()
+
+    def sort(self):
+        '''Player will choose how to sort their hand'''
+        choices = {'1': lambda: self.cards.face_sort(), 
+                   '2': lambda: self.cards.color_sort()}
+        user_input = input("Press 1 to sort by Face | Press 2 to sort by Color")
+        choices.get(user_input, lambda: timed_message("Invalid Argument"))()
+
+    def do_phase(self, phase: Phase):
+        while True:
+            self.show_space(phase)
+            user_input = input("Which cards would you like to drop? (Enter Q when done) ")
+            if user_input.upper() == 'Q':
                 break
-            else: # phases are not complete
-                timed_message("Phases Incomplete. Returning cards...")
-                for phase in self.phases:
-                    for _ in range(phase.unchecked.size()):
-                        self.hand.push(phase.pop())
-                clear()
-                print(self.hand)
-        return self.out
+            elif (index := self.cards.find(user_input)) != -1:
+                phase.push(self.cards.pop(index))
+            else:
+                timed_message("Card not found. (ex. g3 is Green 4; w is Wild)")
+        return phase.is_phase()
+
+    def get_objective(self):
+        return f"Phase {self.phase + 1}: " + " + ".join([Phase.descript(phs_str) for phs_str in PHASES[self.phase]])
 
 class Game:
     '''Game has Players, Phases, a Pickup, and a Discard'''
+
     def __init__(self, num_players = None):
         if not num_players:
             num_players = intin("How many players (2-4): ", (2, 4))
+        self.new_game(num_players)
+
+    def new_game(self, num_players):
         self.players = [Player() for _ in range(num_players)]
-        self.deck = Pickup()
-        self.discard = self.deck.discard
-        self.player_phases: list[list[Phase]] = []
-        self.game_running = True
-        self.turn = None
-    
+        self.pickup = Pickup()
+        self.round_phases = []
+        self.turn_num = 0
+        self.main_loop()
+
+    def inc_turn(self):
+        self.turn_num = (self.turn_num + 1) % len(self.players)
+
     def deal(self):
-        '''Resets deck and discard and deals 10 cards to each player'''
-        self.deck.shuffle()
+        self.pickup.shuffle()
         for _ in range(10):
             for player in self.players:
-                player.hand.push(self.deck.pop())
-        self.discard.cards = []
-        self.discard.push(self.deck.pop())
+                player.cards.push(self.pickup.pop())
+        self.pickup.discard.clear()
+        self.pickup.discard.push(self.pickup.pop())
+
+    def show_table(self, player: Player):
+        on_table = [f"Player {player.name}'s Turn - {player.get_objective()}"]
+        phases_strs = "\n".join([Phase.str_phases(phase_group) for phase_group in self.round_phases])
+        if phases_strs != "":
+            on_table.append(phases_strs)
+        on_table += [str(self.pickup), str(player.cards)]
+        table = '\n'.join(on_table)
+        clear()
+        print(table)
+
+    def card_from_discard(self, player: Player):
+        if self.pickup.discard.is_empty():
+            timed_message("Discard is empty. Drawing from Deck...")
+            self.card_from_pickup(player)
+        else:
+            player.cards.push(self.pickup.discard.pop())
+
+    def card_from_pickup(self, player: Player):
+        if self.pickup.is_empty():
+            timed_message("Pickup is empty. Reshuffling cards from Discard...")
+            self.pickup.cards = self.pickup.discard.recycle()
+        player.cards.push(self.pickup.pop())
+
+    def draw(self, player: Player):
+        '''player draws a card from a pile'''
+        while True:
+            self.show_table(player)
+            choice = input("Draw from Discard (1) or Deck (2): ")
+            if choice == "1":
+                self.card_from_discard(player)
+            elif choice == "2":
+                self.card_from_pickup(player)
+            else:
+                timed_message("Invalid Argument")
+                continue
+            break
+
+    def drop(self, player: Player):
+        '''player drops a card into a pile'''
+        while True:
+            self.show_table(player)
+            card_repr = input("Which card would you like to drop?: ")
+            if (index := player.cards.find(card_repr)) != -1:
+                card = player.cards.pop(index)
+                if card.val == 15:
+                    self.inc_turn()
+                    timed_message("The next player will be skipped.")
+                self.pickup.discard.push(player.cards.pop(index))
+                player.turn_over = True
+                break
+            else:
+                timed_message("Card not found. (ex. g3 is Green 4; w is Wild)")
+
+    def complete_phase(self, player: Player):
+        '''Will determine player phases and let them drop into there, if completed those phases will be returned'''
+        if player.out:
+            timed_message("You have already completed your phase! Try extending another phase.")
+            return
+        phases = [Phase(phs_str) for phs_str in PHASES[player.phase]]
+        incomplete = False
+        for phase in phases:
+            if not player.do_phase(phase):
+                incomplete = True
+                break
+        if not incomplete: 
+            timed_message("Phase Success.")
+            player.out = True
+            for phase in phases:
+                phase.merge()
+            self.round_phases.append(phases)
+        else:
+            timed_message("Phase Failure.")
+            for phase in phases:
+                phase.return_cards(player.cards)
+
+    def extend_phase(self, player: Player):
+        '''Will loop through any phase to extend'''
+        if not player.out:
+            timed_message("You must first complete your phase to extend another phase.")
+            return
+        for phase in [phase for phase_group in self.round_phases for phase in phase_group]:
+            if player.do_phase(phase):
+                print("Phase Success.")
+                phase.merge()
+            else:
+                print("Phase Failure.")
+                phase.return_cards(player.cards)
+
+    def game_over(self) -> bool:
+        '''Displays round results. Returns True if game is over, returns False otherwise'''
+        for player in self.players:
+            player.name
+        return any([player.phase == len(PHASES) for player in self.players])
+
+    def do_turn(self, player: Player) -> bool:
+        '''Walks through player's turn. Returns False if the player has no cards left, otherwise returns True'''
+        self.draw(player)
+        choices = {'1': lambda: player.sort(),
+                   '2': lambda: self.complete_phase(player),
+                   '3': lambda: self.extend_phase(player),
+                   '4': lambda: self.drop(player)}
+        player.turn_over = False
+        while not player.turn_over and player.has_cards():
+            self.show_table(player)
+            user_input = input("Press 1 to Sort | Press 2 to Complete Phase | Press 3 to Extend Phase | Press 4 to Drop a Card")
+            choices.get(user_input, lambda: timed_message("Invalid Argument"))()
+        self.show_table(player)
+        timed_message("Switching Turn" if player.turn_over else "Round Over")
+        return player.has_cards()
+
+    def main_loop(self):
+        '''starts and maintains the state of the game'''
+        while not self.game_over(): # while no player has beaten 10 phases
+            self.deal()
+            while self.do_turn(self.players[self.turn_num]): # while player still has cards
+                self.inc_turn()
+            for player in self.players:
+                player.consolidate()
+            self.round_results()
+            input("Press Enter to continue...")
+        self.game_results()
+        input("Press Enter to continue...")
 
     def round_results(self):
         '''Prints points of all players and declares a winner'''
@@ -139,117 +234,6 @@ class Game:
         self.players.sort(key = lambda player: player.points)
         winner = self.players[0]
         print(f"\nPlayer {winner.name} has won with {winner.points}")
-
-    def show_table(self, curr_player: Player):
-        '''shows the current players hand, pickup, discard, and complete phases'''
-        clear()
-        print(f"Player {curr_player.name}'s Turn - Phase {curr_player.phase_num}: {phase_objectives(curr_player.phases) if not curr_player.out else 'Completed!'}")
-        for phase in self.player_phases:
-            print_phase_group(phase)
-        print(self.deck)
-        print(curr_player.hand)
-                               
-    def add_to_phase(self, player: Player):
-        '''Player gets chance to add more cards to other player's phases'''
-        for phase_group in self.player_phases:
-            for phase in phase_group:
-                player.show_area(phase)
-                while intin("Add to this Phase? yes(1), no(2): ", (1, 2)) == 1:
-                    while True: # while player still adding cards
-                        clear()
-                        print(phase)
-                        print(player.hand)
-                        choice = input("Which card would you like to drop? (type F to finish) ")
-                        if choice.upper() == "F":
-                            break
-                        card_index = player.hand.find(choice)
-                        if card_index == -1:
-                            timed_message("Card not found. (ex. g3 is Green 4; w is Wild)")
-                        else:
-                            phase.push(player.hand.pop(card_index))
-                    if phase.is_phase():
-                        phase.merge()
-                        timed_message("Phase addition: Success.")
-                    else:
-                        timed_message("Phase addition: Failure. Returning cards...")
-                        for _ in range(phase.unchecked.size()):
-                            player.hand.push(phase.pop())
-                    player.show_area(phase)
-
-    def player_turn(self, player: Player) -> bool:
-        '''Sets and walks through players turn. Returns True if player is out of cards, otherwise, returns False'''
-        choice = 3
-        while choice == 3: # player pickup a card
-            self.show_table(player)
-            choice = intin("Draw from Discard(1), from Pickup(2), or Sort(3): ", (1, 3))
-            if choice == 1:
-                if self.discard.top().val == 15: # checks for skip
-                    timed_message("Cannot draw SKIPS from discard. Drawing from Deck...")
-                    player.hand.push(self.deck.pop())
-                else:
-                    player.hand.push(self.discard.pop())
-            elif choice == 2:
-                player.hand.push(self.deck.pop())
-            else:
-                if intin("Would you like to sort by Face(1) or Color(2): ", (1, 2)) == 1:
-                    player.hand.face_sort()
-                else:
-                    player.hand.color_sort()
-                    
-        self.show_table(player)
-        if not player.out: # does not ask players who are already out to complete phase
-            if player.complete_phase():
-                timed_message("Phase Complete! ...")
-                self.player_phases += [player.phases] # adds to game's phases to print
-
-        self.show_table(player)
-        if player.out: # players who are out are now able to add to other game phases
-            if intin("Add to an existing Phase? Yes(1), No(2): ", (1, 2)) == 1:
-                self.add_to_phase(player)
         
-        if not player.has_cards():
-            return True
-        
-        self.show_table(player)
-        card = player.hand.drop()
-        if card.val == 15:
-            next(self.turn)
-            timed_message("Next player will be skipped...")
-        self.discard.push(card) # Player puts down a card
-
-        if not player.has_cards():
-            return True
-        
-        self.show_table(player)
-        input('press any key to end your turn...')
-        clear()
-        return False
-
-    def mainloop(self):
-        '''starts and maintains the state of the game'''
-        clear()
-        self.turn = cycle(self.players)
-        while all([player.phase_num != -1 for player in self.players]): # begins next round if any player is not done with all phases
-            self.deal()
-            self.turn = cycle([player for player in self.players if player.phase_num != -1])
-            while not self.player_turn(next(self.turn)): # will loop through player turns until a player is out of cards
-                input('enter any key to continue...\n')
-            timed_message("Round over!")
-            self.end_round()
-            self.round_results()
-            input('enter any key to continue...\n')
-        self.game_results()
-    
-    def end_round(self):
-        '''Resets and increments all the necessary fields to prepare for the next round'''
-        for player in self.players: # round ends
-            for _ in range(player.hand.size()):
-                player.points += player.hand.pop().val # clears hand and adds points
-            if player.out:
-                player.next_phase()
-            player.out = False
-        self.player_phases = []
-
 if __name__ == "__main__":
-    g = Game(2)
-    g.mainloop()
+    g = Game(1)
