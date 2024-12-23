@@ -1,6 +1,5 @@
 from card import Faces, Colors, Card
 from random import shuffle as _shuffle
-from controls import timed_message
 
 BLANK = Card(Faces.BLANK, Colors.NONE)
 BACK = Card(Faces.BACK, Colors.NONE)
@@ -16,7 +15,10 @@ class Stack:
     
     def pop(self, index = -1) -> Card:
         '''Returns the top card in the stack whilst also removing it from the stack'''
-        return self.cards.pop(index)
+        if self.is_empty():
+            return None
+        else:
+            return self.cards.pop(index)
     
     def top(self) -> Card:
         '''Returns the top card in the stack'''
@@ -28,34 +30,33 @@ class Stack:
     
     def size(self):
         '''Returns the number of cards in the stack'''
-        return len(self.cards)
+        return len(self.cards)    
 
-    def __str__(self):
-        '''subclasses will override this method '''
-        return ""          
+    def clear(self):
+        '''removes all cards from the stack'''
+        self.cards = []    
 
-class Discard(Stack):
-    '''Discard is a Stack'''
-
-    def recycle(self):
-        '''keeps only the top card, returns the rest to be reused'''
-        rest = self.cards[:-1]
-        top = self.pop()
-        self.cards = [top]
-        _shuffle(rest)
-        return rest
-    
-    def __str__(self):
-        if self.is_empty():
-            return str(BLANK)
-        return str(self.top())
+    def __str__(self) -> str:
+        '''string representation of a stack (subclasses may override this method)'''
+        return Card.str_cards(self.cards)
 
 class Pickup(Stack):
     '''Pickup is a Stack and has a Discard'''
 
+    class Discard(Stack):
+        '''Discard is a Stack'''
+
+        def recycle(self):
+            '''keeps only the top card, returns the rest to be reused'''
+            rest = self.cards[:-1]
+            top = self.pop()
+            self.cards = [top]
+            _shuffle(rest)
+            return rest
+
     def __init__(self):
         super().__init__()
-        self.discard = Discard()
+        self.discard = self.Discard()    
 
     def shuffle(self):
         '''creates new shuffled deck of cards: 4 skips, 8 wilds, 2 sets of numbers 1-12 for each color'''
@@ -67,53 +68,21 @@ class Pickup(Stack):
             self.push(Card(Faces.SKIP, Colors.NONE))
         _shuffle(self.cards)
     
-    def pop(self) -> Card:
-        '''returns the top of the deck. If deck is empty, recycles the cards in the discard and reshuffles first'''
-        if self.is_empty():
-            timed_message("Out of cards. Recycling discard pile...")
-            self.cards = self.discard.recycle()
-        return super().pop()
-    
     def __str__(self):
         '''will print the top of discard and the back of the pickup'''
-        card_builder = ""
-        pickup_back = BACK
-        if self.is_empty():
-            pickup_back = BLANK
-        cards = [str(stack).split('\n') for stack in [self.discard, pickup_back]]
-        for index in range(len(cards[0])):
-            card_builder += cards[0][index] + "  " + cards[1][index] + '\n'
-        
-        return card_builder.rstrip() + '\n' + "Discard".center(11) + "  " + "Pickup".center(11) + '\n'
+        pickup_back = BLANK if self.is_empty() else BACK
+        discard_front = BLANK if self.discard.is_empty() else self.discard.top()
+        return f"{Card.str_cards([discard_front, pickup_back]).rstrip()}\n{'Discard':^11} {'Deck Pl':^11}"
 
 class Hand(Stack):
     '''Represents a player-owned stack of cards'''
-    def __str__(self):
-        hand_builder = ""
-        if self.size() != 0:
-            card_lines = [str(card).split('\n') for card in self.cards]
-            for line in range(len(card_lines[0])): 
-                for card_line in card_lines:
-                    hand_builder += card_line[line] + " " # matches the same line for all cards
-                hand_builder += '\n'
-        return hand_builder.rstrip() + '\n'
     
-    def find(self, card_repr: str):
+    def find(self, card_repr: str) -> int:
         '''Returns the index of the card in a stack via a card's card_repr. Returns -1 if not found'''
         for index in range(self.size()):
             if card_repr == self.cards[index]._repr:
                 return index
         return -1
-
-    def drop(self):
-        '''Prompts player to 'safely' drop a card
-        '''
-        while True:
-            card_repr = input("Which card would you like to drop?: ")
-            index = self.find(card_repr)
-            if index != -1:
-                return self.pop(index)
-            print("Card not found. (ex. g3 is Green 4; w is Wild)")
 
     def face_sort(self):
         '''Sorts cards by face'''
@@ -121,7 +90,10 @@ class Hand(Stack):
 
     def color_sort(self):
         '''Sorts cards by color'''
-        self.cards = sorted(self.cards, key = lambda card: card.color.value) # may modify
+        self.cards.sort(key = lambda card: card.color.value) # may modify
+
+    def sum(self) -> int:
+        return sum([card.val for card in self.cards])
 
 class Phase(Stack):
     '''Represents a maintained stack according to phase conditions.'''
@@ -253,6 +225,20 @@ class Phase(Stack):
                 expected_val = curr_val + 1
         return num_wilds >= 0 and self.num_skips == 0
 
+    def return_cards(self, stack: Stack):
+        for _ in range(self.unchecked.size()):
+            stack.push(self.pop())
+
+    @staticmethod
+    def descript(phase_str: str) -> str:
+        '''Returns a human readable description of the Phase contraints
+        >>> Phase.descript("set3")
+        'A Set of 3'
+        >>> Phase.descript("set3c")
+        'A Set of 3 Colors'
+        '''
+        return f"A {phase_str[:3].title()} of {phase_str[3]} {'Colors' if len(phase_str) == 5 else ''}".rstrip()
+
     def desc(self):
         '''Returns a human readable description of the Phase contraints
         >>> p1 = Phase("set3")
@@ -262,18 +248,33 @@ class Phase(Stack):
         >>> p1.desc()
         'A Set of 3 Colors'
         '''
-        return f"A {self.phase_str[:3].title()} of {self.phase_str[3]} {'Colors' if len(self.phase_str) == 5 else ''}".rstrip()
+        return Phase.descript(self.phase_str)
 
-    def __str__(self):
-        hand_builder = ""
-        if self.size() + self.unchecked.size() != 0:
-            card_lines = [str(card).split('\n') for card in self.cards + self.unchecked.cards]
-            for line in range(len(card_lines[0])): 
-                for card_line in card_lines:
-                    hand_builder += card_line[line] + " " # matches the same line for all cards
-                hand_builder = hand_builder.rstrip() + '\n'
-        return hand_builder.rstrip() + '\n'
+    @staticmethod
+    def str_phases(phases: list["Phase"]): # assumes at least one card in each phase
+        if len(phases) == 0:
+            return ""
+        phases_lines = [str(phase).split('\n') for phase in phases]
+        num_phases = len(phases_lines)
+        num_lines = len(phases_lines[0])
+        return '\n'.join(["    ".join([phases_lines[phase][line_num] 
+                                       for phase in range(num_phases)]) 
+                                       for line_num in range(num_lines)])
+
+    def __str__(self) -> str:
+        return Card.str_cards(self.cards + self.unchecked.cards)
 
 if __name__ == "__main__":
     from doctest import testmod
     testmod()
+    h = Phase("")
+    h.push(Card(Faces.EIGHT, Colors.BLUE))
+    h.push(Card(Faces.SEVEN, Colors.RED))
+    h.push(Card(Faces.FOUR, Colors.YELLOW))
+
+    w = Phase("")
+    w.push(Card(Faces.EIGHT, Colors.BLUE))
+    w.push(Card(Faces.SEVEN, Colors.RED))
+    w.push(Card(Faces.FOUR, Colors.YELLOW))
+    
+    print(Phase.str_phases([w, h]))
