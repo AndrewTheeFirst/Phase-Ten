@@ -7,9 +7,23 @@
 # 2024-11-5 Implemented Phase addition - Production
 # 2024-11-8 Phase class rework (Stack, verification, merge, etc.) misc. tweaks
 # 2024-12-21 Complete refactor - more consistent printing, improved eventloop
+# 2024-12-23 Bug fix, Moved controls.py into main.py
 
 from stack import Pickup, Phase, Hand
-from controls import intin, clear, timed_message
+from os import system, name as os_name
+from time import sleep
+
+def clear():
+    '''clears the console / terminal'''
+    if os_name == "nt":
+        system("cls")
+    else:
+        print("\x1b[2J\x1b[H", end="")
+
+def timed_message(prompt: str, seconds: float = 1.0):
+    '''displays specified prompt for a number of seconds'''
+    print(prompt)
+    sleep(seconds)
 
 PHASES = [["set3", "set3"],
           ["set3", "run4"],
@@ -53,6 +67,8 @@ class Player:
 
     def sort(self):
         '''Player will choose how to sort their hand'''
+        clear()
+        print(self.cards)
         choices = {'1': lambda: self.cards.face_sort(), 
                    '2': lambda: self.cards.color_sort()}
         user_input = input("Press 1 to sort by Face | Press 2 to sort by Color")
@@ -76,15 +92,17 @@ class Player:
 class Game:
     '''Game has Players, Phases, a Pickup, and a Discard'''
 
-    def __init__(self, num_players = None):
+    def __init__(self, num_players = ""):
         if not num_players:
-            num_players = intin("How many players (2-4): ", (2, 4))
-        self.new_game(num_players)
+            while not num_players.isnumeric() or not ('1' <= num_players <= '4'):
+                clear()
+                num_players = input("How many players (1-4): ")
+        self.new_game(int(num_players))
 
     def new_game(self, num_players):
         self.players = [Player() for _ in range(num_players)]
         self.pickup = Pickup()
-        self.round_phases = []
+        self.round_phases: list[list[Phase]] = []
         self.turn_num = 0
         self.main_loop()
 
@@ -146,7 +164,7 @@ class Game:
                 if card.val == 15:
                     self.inc_turn()
                     timed_message("The next player will be skipped.")
-                self.pickup.discard.push(player.cards.pop(index))
+                self.pickup.discard.push(card)
                 player.turn_over = True
                 break
             else:
@@ -236,4 +254,4 @@ class Game:
         print(f"\nPlayer {winner.name} has won with {winner.points}")
         
 if __name__ == "__main__":
-    g = Game(1)
+    g = Game()
