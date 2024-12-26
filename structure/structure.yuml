@@ -1,0 +1,18 @@
+// {type:class}
+// {direction:leftToRight}
+
+// Inheritance
+[Stack]^[Pickup]
+[Stack]^[Discard]
+[Stack]^[Hand]
+[Stack]^[Phase]
+
+// Compositions
+
+[Game]++-[Pickup]
+[Game]++*-[Phase]
+[Game]++*-[Player]
+[Hand]-++[Player]
+[Pickup]++-[Discard]
+
+// Aggregations
